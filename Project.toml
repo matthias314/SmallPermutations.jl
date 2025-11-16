@@ -1,0 +1,11 @@
+name = "SmallPermutations"
+uuid = "40e33685-ba66-4818-b0d5-d0722135a0b8"
+version = "0.1.0"
+authors = ["matthias314"]
+
+[deps]
+AbstractPermutations = "36d08e8a-54dd-435f-8c9e-38a475050b11"
+SmallCollections = "2b935e18-93d6-40ac-ae34-fe54c09f00e1"
+
+[sources]
+AbstractPermutations = {url = "https://github.com/matthias314/AbstractPermutations.jl", rev = "m3/smallpermutations"}
