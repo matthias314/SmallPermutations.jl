@@ -2,12 +2,17 @@ module SmallPermutations
 
 export SmallPermutation
 
-import Base: copy, convert, ==, ^, *, one, inv
+import Base:
+    copy, convert, ==, ^, *, one, inv, size, getindex
 
-using AbstractPermutations: AbstractPermutation
-import AbstractPermutations: degree, inttype, __unsafe_image, __images_vector, CycleDecomposition, __isodd
+using AbstractPermutations:
+    AbstractPermutation, AbstractCycleDecomposition
+import AbstractPermutations:
+    degree, inttype, __unsafe_image, __images_vector, __isodd, cycles
 
-using SmallCollections: FixedVector, MutableFixedVector, SmallVector, resize
+using SmallCollections:
+    FixedVector, MutableFixedVector, SmallVector, resize,
+    SmallBitSet, support, bits, unsafe_lshr, unsafe_delete
 using SmallCollections: ntuple  # better for vectorizing than ntuple from Base
 
 const U = UInt8
@@ -137,33 +142,6 @@ for N in (16, 32, 64, 128)
     end
 end
 
-# this part needs a modified version of AbstractPermutations
-
-using SmallCollections: MutableSmallVector, SmallBitSet, pop
-
-function CycleDecomposition(p::SmallPermutation{N}) where N
-    cycles = zero(MutableFixedVector{N,U})
-    cycles_ptrs = zero(MutableFixedVector{N,U})
-    s = @inbounds SmallBitSet(Base.OneTo(degree(p)))
-    a = b = 0
-    @inbounds while !isempty(s)
-        j = i = first(s) % U
-        cycles_ptrs[b += 1] = a+1
-        while true
-            s = first(pop(s, j))  # or unsafe_delete
-            cycles[a += 1] = j
-            j = p.v[j]
-            j == i && break
-        end
-    end
-    @inbounds cycles_ptrs[b+1] = (degree(p)+1) % U
-    CycleDecomposition(SmallVector(cycles, a), SmallVector(cycles_ptrs, b+1))
-end
-
-# end of this part
-
-using SmallCollections: SmallBitSet, support, bits, unsafe_lshr
-
 function __isodd(p::SmallPermutation)
     s = 0
     for i in 1:p.deg-1
@@ -171,6 +149,45 @@ function __isodd(p::SmallPermutation)
         s += count_ones(unsafe_lshr(bits(t), i))
     end
     isodd(s)
+end
+
+# cycle decomposition
+
+struct SmallCycleDecomposition{N,T<:Integer} <: AbstractCycleDecomposition{T,SubArray{T,1,SmallVector{N,T},Tuple{UnitRange{Int64}},true}}
+    cycles::SmallVector{N,T} # cycles, concatenated
+    cycles_ptrs::SmallVector{N,T} # pointers to the starts of the cycles
+end
+
+size(cd::SmallCycleDecomposition) = (length(cd.cycles_ptrs)-1,)
+
+degree(cd::SmallCycleDecomposition) = length(cd.cycles)
+
+using Base: @propagate_inbounds
+
+@inline function getindex(cd::SmallCycleDecomposition, i::Int)
+    @boundscheck checkbounds(cd, i)
+    @inbounds ii = cd.cycles_ptrs[i]:cd.cycles_ptrs[i+1]-1
+    @inbounds cd.cycles[ii]
+    @inbounds view(cd.cycles, ii)
+end
+
+function cycles(p::SmallPermutation{N}) where N
+    cycles = zero(MutableFixedVector{N,U})
+    cycles_ptrs = zero(MutableFixedVector{N,U})
+    s = @inbounds SmallBitSet(Base.OneTo(degree(p)))
+    a = b = U(0)
+    @inbounds while !isempty(s)
+        j = i = first(s) % U
+        cycles_ptrs[b += U(1)] = a + U(1)
+        while true
+            s = unsafe_delete(s, j)
+            cycles[a += U(1)] = j
+            j = p.v[j]
+            j == i && break
+        end
+    end
+    @inbounds cycles_ptrs[b + U(1)] = (degree(p)+1) % U
+    SmallCycleDecomposition(SmallVector(cycles, a), SmallVector(cycles_ptrs, b + U(1)))
 end
 
 end # module
