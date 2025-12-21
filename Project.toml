@@ -9,3 +9,6 @@ SmallCollections = "2b935e18-93d6-40ac-ae34-fe54c09f00e1"
 
 [compat]
 SmallCollections = "0.6.1"
+
+[sources]
+AbstractPermutations = {rev = "m3/smallpermutations2", url = "https://github.com/matthias314/AbstractPermutations.jl"}
