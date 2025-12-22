@@ -12,7 +12,7 @@ import AbstractPermutations:
 
 using SmallCollections:
     FixedVector, MutableFixedVector, SmallVector, resize,
-    SmallBitSet, support, bits, unsafe_lshr, unsafe_delete
+    smallbitsettype, support, bits, unsafe_lshr, unsafe_delete, uinttype
 using SmallCollections: ntuple  # better for vectorizing than ntuple from Base
 
 const U = UInt8
@@ -174,7 +174,8 @@ end
 function cycles(p::SmallPermutation{N}) where N
     cycles = zero(MutableFixedVector{N,U})
     cycles_ptrs = zero(MutableFixedVector{N,U})
-    s = @inbounds SmallBitSet(Base.OneTo(degree(p)))
+    S = smallbitsettype(Val(N))
+    s = @inbounds S(Base.OneTo(degree(p)))
     a = b = U(0)
     @inbounds while !isempty(s)
         j = i = first(s) % U
