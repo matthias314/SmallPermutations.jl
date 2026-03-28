@@ -129,7 +129,7 @@ function ^(σ::SmallPermutation, n::Integer)
     end
 end
 
-for N in (16, 32, 64)
+for N in (16, 32, 64, 128)
     m = Symbol("smallperm", N, "_str")
     @eval export $(Symbol('@', m))
     @eval macro $m(str)
