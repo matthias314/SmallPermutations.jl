@@ -167,7 +167,6 @@ using Base: @propagate_inbounds
 @inline function getindex(cd::SmallCycleDecomposition, i::Int)
     @boundscheck checkbounds(cd, i)
     @inbounds ii = cd.cycles_ptrs[i]:cd.cycles_ptrs[i+1]-1
-    @inbounds cd.cycles[ii]
     @inbounds view(cd.cycles, ii)
 end
 
