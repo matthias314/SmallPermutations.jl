@@ -8,7 +8,7 @@ AbstractPermutations = "36d08e8a-54dd-435f-8c9e-38a475050b11"
 SmallCollections = "2b935e18-93d6-40ac-ae34-fe54c09f00e1"
 
 [compat]
-SmallCollections = "0.6.1"
+SmallCollections = "0.6.2"
 
 [sources]
 AbstractPermutations = {rev = "m3/smallpermutations2", url = "https://github.com/matthias314/AbstractPermutations.jl"}

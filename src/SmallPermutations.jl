@@ -11,9 +11,20 @@ import AbstractPermutations:
     degree, inttype, __unsafe_image, __images_vector, __isodd, cycles
 
 using SmallCollections:
-    FixedVector, MutableFixedVector, SmallVector, resize,
+    FixedVector, MutableFixedVector, SmallVector, resize, getindex0,
     smallbitsettype, support, bits, unsafe_lshr, unsafe_delete, uinttype
 using SmallCollections: ntuple  # better for vectorizing than ntuple from Base
+
+# Plus1
+
+struct Plus1{T, V<:AbstractVector} <: AbstractVector{T}
+    v::V
+end
+
+Plus1{T}(v::V) where {T, V <: AbstractVector} = Plus1{T,V}(v)
+
+size(v::Plus1) = size(v.v)
+Base.@propagate_inbounds getindex(v::Plus1{T}, i::Int) where T = v.v[i] % T + T(1)
 
 const U = UInt8
 
@@ -24,7 +35,7 @@ struct SmallPermutation{N} <: AbstractPermutation
 end
 
 @inline function _SmallPermutation(v::FixedVector{N,U}) where N
-    i = findlast(map(!=, v, FixedVector{N,U}(1:N)))
+    i = findlast(map(!=, v, FixedVector{N,U}(0:N-1)))
     deg = i === nothing ? 0 : i
     _SmallPermutation(v, deg)
 end
@@ -34,11 +45,11 @@ end
     if check
         a, b = extrema(v)
         (a, b) == (1, length(v)) || error("not a permutation")
-        b <= N <= typemax(U) || error("permutation too big")
+        b <= N <= typemax(U)+1 || error("permutation too big")
     end
-    w = MutableFixedVector{N,U}(1:N)
+    w = MutableFixedVector{N,U}(0:N-1)
     for i in eachindex(v)
-        @inbounds w[i] = v[i] % U
+        @inbounds w[i] = (v[i]-1) % U
     end
     if check
         allunique(w) || error("not a permutation")
@@ -48,19 +59,19 @@ end
 
 degree(p::SmallPermutation) = p.deg
 
-__images_vector(p::SmallPermutation) = @inbounds resize(SmallVector(p.v), p.deg)
+__images_vector(p::SmallPermutation) = @inbounds Plus1{UInt16}(resize(SmallVector(p.v), p.deg))
 
-inttype(::Type{<:SmallPermutation}) = U
+inttype(::Type{<:SmallPermutation}) = UInt16
 
 copy(p::SmallPermutation) = p
 
 function convert(::Type{SmallPermutation{N}}, p::SmallPermutation{M}) where {N,M}
-    N <= typemax(U) || error("permutation too big")
+    N <= typemax(U)+1 || error("permutation too big")
     M <= N || p.deg <= N || error("permutation too big")
     _SmallPermutation(unsafe_resize(p.v, Val(N)), p.deg)
 end
 
-__unsafe_image(n::T, p::SmallPermutation) where T <: Integer = @inbounds(p.v[n]) % T
+__unsafe_image(n::T, p::SmallPermutation) where T <: Integer = @inbounds(p.v[n]+1) % T
 
 function ^(n::T, p::SmallPermutation{N}) where {T <: Integer, N}
     # 1 <= n <= N ? __unsafe_image(n, p) : n
@@ -68,12 +79,12 @@ function ^(n::T, p::SmallPermutation{N}) where {T <: Integer, N}
 end
 
 function one(::Type{SmallPermutation{N}}) where N
-    N <= typemax(U) || error("permutation too big")
-    _SmallPermutation(FixedVector{N,U}(1:N), 0)
+    N <= typemax(U)+1 || error("permutation too big")
+    _SmallPermutation(FixedVector{N,U}(0:N-1), 0)
 end
 
 function unsafe_resize(v::FixedVector{N,U}, ::Val{M}) where {N,M}
-    FixedVector(ntuple(i -> i <= N ? v[i] : U(i), Val(M)))
+    FixedVector(ntuple(i -> i <= N ? v[i] : U(i-1), Val(M)))
 end
 
 function ==(p::SmallPermutation{L}, q::SmallPermutation{M}) where {L,M}
@@ -85,15 +96,15 @@ end
     N = max(L, M)
     pv = unsafe_resize(p.v, Val(N))
     qv = unsafe_resize(q.v, Val(N))
-    @inbounds _SmallPermutation(qv[pv])
+    @inbounds _SmallPermutation(getindex0(qv, pv))
 end
 
 *(p::SmallPermutation, q::SmallPermutation, rs::Vararg{SmallPermutation,M}) where M = *(p*q, rs...)
 
 function inv(p::SmallPermutation{N}) where N
-    w = MutableFixedVector{N,U}(1:N)
+    w = MutableFixedVector{N,U}(0:N-1)
     for i in 1:degree(p)
-        @inbounds w[p.v[i]] = i % U
+        @inbounds w[p.v[i]+1] = (i-1) % U
     end
     _SmallPermutation(FixedVector(w), degree(p))
 end
@@ -134,7 +145,7 @@ function ^(σ::SmallPermutation, n::Integer)
     end
 end
 
-for N in (16, 32, 64, 128)
+for N in (16, 32, 64, 128, 256)
     m = Symbol("smallperm", N, "_str")
     @eval export $(Symbol('@', m))
     @eval macro $m(str)
@@ -153,21 +164,19 @@ end
 
 # cycle decomposition
 
-struct SmallCycleDecomposition{N,T<:Integer} <: AbstractCycleDecomposition{T,SubArray{T,1,SmallVector{N,T},Tuple{UnitRange{Int64}},true}}
-    cycles::SmallVector{N,T} # cycles, concatenated
-    cycles_ptrs::SmallVector{N,T} # pointers to the starts of the cycles
+struct SmallCycleDecomposition{N} <: AbstractCycleDecomposition{UInt16,Plus1{UInt16,SubArray{U,1,SmallVector{N,U},Tuple{UnitRange{Int64}},true}}}
+    cycles::SmallVector{N,U} # cycles, concatenated
+    cycles_ptrs::SmallVector{N,U} # pointers to the starts of the cycles
 end
 
 size(cd::SmallCycleDecomposition) = (length(cd.cycles_ptrs)-1,)
 
 degree(cd::SmallCycleDecomposition) = length(cd.cycles)
 
-using Base: @propagate_inbounds
-
-@inline function getindex(cd::SmallCycleDecomposition, i::Int)
+@inline function getindex(cd::SmallCycleDecomposition{N}, i::Int) where N
     @boundscheck checkbounds(cd, i)
-    @inbounds ii = cd.cycles_ptrs[i]:cd.cycles_ptrs[i+1]-1
-    @inbounds view(cd.cycles, ii)
+    @inbounds ii = cd.cycles_ptrs[i]+1:(cd.cycles_ptrs[i+1]-U(1))+1
+    @inbounds Plus1{UInt16}(view(cd.cycles, ii))
 end
 
 function cycles(p::SmallPermutation{N}) where N
@@ -175,19 +184,19 @@ function cycles(p::SmallPermutation{N}) where N
     cycles_ptrs = zero(MutableFixedVector{N,U})
     S = smallbitsettype(Val(N))
     s = @inbounds S(Base.OneTo(degree(p)))
-    a = b = U(0)
+    a = b = 0
     @inbounds while !isempty(s)
-        j = i = first(s) % U
-        cycles_ptrs[b += U(1)] = a + U(1)
+        j = i = first(s)
+        cycles_ptrs[b += 1] = a % U
         while true
             s = unsafe_delete(s, j)
-            cycles[a += U(1)] = j
-            j = p.v[j]
+            cycles[a += 1] = (j-1) % U
+            j = p.v[j] + 1
             j == i && break
         end
     end
-    @inbounds cycles_ptrs[b + U(1)] = (degree(p)+1) % U
-    SmallCycleDecomposition(SmallVector(cycles, a), SmallVector(cycles_ptrs, b + U(1)))
+    @inbounds cycles_ptrs[b+1] = degree(p) % U
+    SmallCycleDecomposition(SmallVector(cycles, a), SmallVector(cycles_ptrs, b+1))
 end
 
 end # module
